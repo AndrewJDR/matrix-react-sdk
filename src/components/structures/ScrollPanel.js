@@ -182,14 +182,16 @@ module.exports = React.createClass({
     },
 
     // return true if the content is fully scrolled down right now; else false.
-    //
-    // Note that if the content hasn't yet been fully populated, this may
-    // spuriously return true even if the user wanted to be looking at earlier
-    // content. So don't call it in render() cycles.
     isAtBottom: function() {
         var sn = this._getScrollNode();
-        // + 1 here to avoid fractional pixel rounding errors
-        return sn.scrollHeight - Math.ceil(sn.scrollTop) <= sn.clientHeight + 1;
+
+        // there seems to be some bug with flexbox/gemini/chrome/vdh's
+        // understanding of the box model, wherein the scrollNode ends up 2
+        // pixels higher than the available space, even when there are less
+        // than a screenful of messages. + 3 is a fudge factor to pretend
+        // that we're at the bottom when we're still a few pixels off.
+
+        return sn.scrollHeight - Math.ceil(sn.scrollTop) <= sn.clientHeight + 3;
     },
 
     // check the scroll state and send out backfill requests if necessary.

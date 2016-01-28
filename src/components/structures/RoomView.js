@@ -392,8 +392,16 @@ module.exports = React.createClass({
                 readMarkerGhostEventId: readMarkerGhostEventId,
             });
 
-            // if the scrollpanel is following the timeline, scroll it to bring
-            // the read message up to the middle of the panel.
+
+            // if the scrollpanel is following the timeline, attempt to scroll
+            // it to bring the read message up to the middle of the panel. This
+            // will have no immediate effect (since we are already at the
+            // bottom), but will ensure that if there is no further user
+            // activity, but room activity continues, the read message will
+            // scroll up to the middle of the window, but no further.
+            //
+            // we do this here as well as in sendReadReceipt to deal with
+            // people using two clients at once.
             if (this.refs.messagePanel && this.refs.messagePanel.isAtBottom()) {
                 this.refs.messagePanel.scrollToToken(readMarkerEventId);
             }
@@ -1232,6 +1240,19 @@ module.exports = React.createClass({
                 // it failed, so allow retries next time the user is active
                 this.last_rr_sent_event_id = undefined;
             });
+
+            // if the scrollpanel is following the timeline, attempt to scroll
+            // it to bring the read message up to the middle of the panel. This
+            // will have no immediate effect (since we are already at the
+            // bottom), but will ensure that if there is no further user
+            // activity, but room activity continues, the read message will
+            // scroll up to the middle of the window, but no further.
+            //
+            // we do this here as well as in onRoomReceipt to cater for guest users
+            // (which do not send out read receipts).
+            if (this.refs.messagePanel && this.refs.messagePanel.isAtBottom()) {
+                this.refs.messagePanel.scrollToToken(lastReadEvent.getId());
+            }
         }
     },
 
@@ -1354,12 +1375,6 @@ module.exports = React.createClass({
             return "";
         }
         return this.state.numUnreadMessages + " new message" + (this.state.numUnreadMessages > 1 ? "s" : "");
-    },
-
-    scrollToReadMarker: function() {
-        var messagePanel = this.refs.messagePanel;
-        if (!messagePanel) return;
-        messagePanel.scrollToToken(this.state.readMarkerEventId);
     },
 
     scrollToBottom: function() {
