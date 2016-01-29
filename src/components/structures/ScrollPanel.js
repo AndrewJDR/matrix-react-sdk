@@ -39,17 +39,13 @@ if (DEBUG_SCROLL) {
  *
  * Some notes about the implementation:
  *
- * The saved 'scrollState' can exist in one of three states:
+ * The saved 'scrollState' can exist in one of two states:
  *
- *   - null: (the default, and restored by resetScrollState) - no explicit
- *     state has been set yet. Updates to the children will be ignored as far
- *     as scrolling the viewport goes.
+ *   - atBottom: (the default, and restored by resetScrollState): the viewport
+ *     is scrolled down as far as it can be. When the children are updated, the
+ *     scroll position will be updated to ensure it is still at the bottom.
  *
- *   - atBottom: the viewport is scrolled down as far as it can be. When the
- *     children are updated, the scroll position will be updated to ensure it
- *     is still at the bottom.
- *
- *   - normal, in which the viewport is conceptually tied at a specific scroll
+ *   - fixed, in which the viewport is conceptually tied at a specific scroll
  *     offset.  We don't save the absolute scroll offset, because that would be
  *     affected by window width, zoom level, amount of scrollback, etc. Instead
  *     we save an identifier for the last fully-visible message, and the number
@@ -185,7 +181,7 @@ module.exports = React.createClass({
     isAtBottom: function() {
         var sn = this._getScrollNode();
 
-        // there seems to be some bug with flexbox/gemini/chrome/vdh's
+        // there seems to be some bug with flexbox/gemini/chrome/richvdh's
         // understanding of the box model, wherein the scrollNode ends up 2
         // pixels higher than the available space, even when there are less
         // than a screenful of messages. + 3 is a fudge factor to pretend
@@ -280,15 +276,18 @@ module.exports = React.createClass({
 
     /* reset the saved scroll state.
      *
-     * This will cause the scroll to be reinitialised on the next update of the
-     * child list.
-     *
      * This is useful if the list is being replaced, and you don't want to
      * preserve scroll even if new children happen to have the same scroll
      * tokens as old ones.
+     *
+     * This will cause the viewport to be scrolled down to the bottom on the
+     * next update of the child list. This is different to scrollToBottom(),
+     * which would save the current bottom-most child as the active one (so is
+     * no use if no children exist yet, or if you are about to replace the
+     * child list.)
      */
     resetScrollState: function() {
-        this.scrollState = null;
+        this.scrollState = {atBottom: true};
     },
 
     scrollToBottom: function() {
@@ -405,11 +404,6 @@ module.exports = React.createClass({
     _restoreSavedScrollState: function() {
         var scrollState = this.scrollState;
         var scrollNode = this._getScrollNode();
-
-        if (!scrollState) {
-            debuglog("No scroll state saved yet");
-            return;
-        }
 
         if (scrollState.atBottom) {
             scrollNode.scrollTop = scrollNode.scrollHeight;
