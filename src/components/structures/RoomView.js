@@ -155,9 +155,6 @@ module.exports = React.createClass({
         // Next, load the timeline.
         roomProm.then((room) => {
             this._calculatePeekRules(room);
-            this._timelineWindow = new Matrix.TimelineWindow(
-                MatrixClientPeg.get(), room,
-                {windowLimit: TIMELINE_CAP});
 
             var initialEvent = this.props.initialEventId;
             if (!initialEvent) {
@@ -165,15 +162,51 @@ module.exports = React.createClass({
                 initialEvent = this.state.readMarkerEventId;
             }
 
-            return this._timelineWindow.load(initialEvent, INITIAL_SIZE);
-        }).then(() => {
+            var pixelOffset = this.props.initialEventPixelOffset;
+            return this._loadTimeline(initialEvent, pixelOffset);
+        }).done();
+    },
+
+    /**
+     * (re)-load the event timeline, and initialise the scroll state, centered
+     * around the given event.
+     *
+     * @param {string?}  eventId the event to focus on. If undefined, will
+     *    scroll to the bottom of the room.
+     *
+     * @param {number?} pixelOffset   offset to position the given event at
+     *    (pixels from the bottom of the view). If undefined, will put the
+     *    event in the middle of the view.
+     */
+    _loadTimeline: function(eventId, pixelOffset) {
+        // TODO: we could optimise this, by not resetting the window if the
+        // event is in the current window (though it's not obvious how we can
+        // tell if the current window is on the live event stream)
+        this.setState({
+            events: [],
+            timelineLoaded: false,
+        });
+
+        this._timelineWindow = new Matrix.TimelineWindow(
+            MatrixClientPeg.get(), this.state.room,
+            {windowLimit: TIMELINE_CAP});
+
+        return this._timelineWindow.load(eventId, INITIAL_SIZE).then(() => {
             debuglog("RoomView: timeline loaded");
-            this._onTimelineUpdated(true);
+            this._onTimelineUpdated(true, () => {
+                // initialise the scroll state of the message panel
+                if (!this.refs.messagePanel) { return; }
+                if (eventId) {
+                    this.refs.messagePanel.scrollToToken(eventId, pixelOffset);
+                } else {
+                    this.refs.messagePanel.scrollToBottom();
+                }
+            });
         }).finally(() => {
             this.setState({
                 timelineLoaded: true
             });
-        }).done();
+        });
     },
 
     componentWillUnmount: function() {
@@ -526,20 +559,6 @@ module.exports = React.createClass({
         var messagePanel = ReactDOM.findDOMNode(this.refs.messagePanel);
         this.refs.messagePanel.initialised = true;
 
-        // initialise the scroll state of the message panel
-        var initialEvent = this.props.initialEventId;
-        var pixelOffset = this.props.initialEventPixelOffset;
-        if (!initialEvent) {
-            // scroll to the 'read-up-to' mark
-            initialEvent = this.state.readMarkerEventId;
-            pixelOffset = undefined;
-        }
-        if (initialEvent) {
-            this.refs.messagePanel.scrollToToken(initialEvent, pixelOffset);
-        } else {
-            this.refs.messagePanel.scrollToBottom();
-        }
-
         this.sendReadReceipt();
 
         this.updateTint();
@@ -556,7 +575,7 @@ module.exports = React.createClass({
         }
     },
 
-    _onTimelineUpdated: function(gotResults) {
+    _onTimelineUpdated: function(gotResults, callback) {
         // we might have switched rooms since the load started - just bin
         // the results if so.
         if (this.unmounted) return;
@@ -569,7 +588,7 @@ module.exports = React.createClass({
             this.setState({
                 events: this._timelineWindow.getEvents(),
                 canBackPaginate: this._timelineWindow.canPaginate(EventTimeline.BACKWARDS),
-            });
+            }, callback);
         }
     },
 
@@ -1378,9 +1397,7 @@ module.exports = React.createClass({
     },
 
     scrollToBottom: function() {
-        var messagePanel = this.refs.messagePanel;
-        if (!messagePanel) return;
-        messagePanel.scrollToBottom();
+        this._loadTimeline();
     },
 
     // get the current scroll position of the room, so that it can be
