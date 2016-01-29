@@ -61,8 +61,8 @@ module.exports = React.createClass({
     propTypes: {
         ConferenceHandler: React.PropTypes.any,
         roomId: React.PropTypes.string.isRequired,
-        initialEventId: React.PropTypes.string,
-        initialEventPixelOffset: React.PropTypes.number,
+        eventId: React.PropTypes.string,
+        eventPixelOffset: React.PropTypes.number,
         autoPeek: React.PropTypes.bool, // should we try to peek the room on mount, or has whoever invoked us already initiated a peek?
     },
 
@@ -86,7 +86,7 @@ module.exports = React.createClass({
             syncState: MatrixClientPeg.get().getSyncState(),
             hasUnsentMessages: this._hasUnsentMessages(room),
             callState: null,
-            timelineLoaded: false, // track whether our room timeline has loaded
+            timelineLoading: true, // track whether our room timeline is loading
             guestsCanJoin: false,
             canPeek: false,
             readMarkerEventId: room ? room.getEventReadUpTo(MatrixClientPeg.get().credentials.userId) : null,
@@ -155,16 +155,19 @@ module.exports = React.createClass({
         // Next, load the timeline.
         roomProm.then((room) => {
             this._calculatePeekRules(room);
-
-            var initialEvent = this.props.initialEventId;
-            if (!initialEvent) {
-                // go to the 'read-up-to' mark if no explicit event given
-                initialEvent = this.state.readMarkerEventId;
-            }
-
-            var pixelOffset = this.props.initialEventPixelOffset;
-            return this._loadTimeline(initialEvent, pixelOffset);
+            return this._initTimeline(this.props);
         }).done();
+    },
+
+    _initTimeline: function(props) {
+        var initialEvent = props.eventId;
+        if (!initialEvent) {
+            // go to the 'read-up-to' mark if no explicit event given
+            initialEvent = this.state.readMarkerEventId;
+        }
+
+        var pixelOffset = props.eventPixelOffset;
+        return this._loadTimeline(initialEvent, pixelOffset);
     },
 
     /**
@@ -177,14 +180,17 @@ module.exports = React.createClass({
      * @param {number?} pixelOffset   offset to position the given event at
      *    (pixels from the bottom of the view). If undefined, will put the
      *    event in the middle of the view.
+     *
+     * returns a promise which will resolve when the load completes.
      */
     _loadTimeline: function(eventId, pixelOffset) {
         // TODO: we could optimise this, by not resetting the window if the
         // event is in the current window (though it's not obvious how we can
         // tell if the current window is on the live event stream)
+
         this.setState({
             events: [],
-            timelineLoaded: false,
+            timelineLoading: true,
         });
 
         this._timelineWindow = new Matrix.TimelineWindow(
@@ -193,18 +199,23 @@ module.exports = React.createClass({
 
         return this._timelineWindow.load(eventId, INITIAL_SIZE).then(() => {
             debuglog("RoomView: timeline loaded");
-            this._onTimelineUpdated(true, () => {
+            this._onTimelineUpdated(true);
+        }).finally(() => {
+            this.setState({
+                timelineLoading: false,
+            }, () => {
                 // initialise the scroll state of the message panel
-                if (!this.refs.messagePanel) { return; }
+                if (!this.refs.messagePanel) {
+                    // this shouldn't happen.
+                    console.log("can't initialise scroll state because " +
+                                "messagePanel didn't load");
+                    return;
+                }
                 if (eventId) {
                     this.refs.messagePanel.scrollToToken(eventId, pixelOffset);
                 } else {
                     this.refs.messagePanel.scrollToBottom();
                 }
-            });
-        }).finally(() => {
-            this.setState({
-                timelineLoaded: true
             });
         });
     },
@@ -310,11 +321,17 @@ module.exports = React.createClass({
         });
     },
 
-    // MatrixRoom still showing the messages from the old room?
-    // Set the key to the room_id. Sadly you can no longer get at
-    // the key from inside the component, or we'd check this in code.
-    /*componentWillReceiveProps: function(props) {
-    },*/
+    componentWillReceiveProps: function(newProps) {
+        if (newProps.roomId != this.props.roomId) {
+            throw new Error("changing room on a RoomView is not supported");
+        }
+
+        if (newProps.eventId != this.props.eventId) {
+            console.log("RoomView switching to eventId " + newProps.eventId +
+                        " (was " + this.props.eventId + ")");
+            return this._initTimeline(newProps);
+        }
+    },
 
     onRoomTimeline: function(ev, room, toStartOfTimeline, removed, data) {
         if (this.unmounted) return;
@@ -1525,11 +1542,11 @@ module.exports = React.createClass({
         var ScrollPanel = sdk.getComponent("structures.ScrollPanel");
         var TintableSvg = sdk.getComponent("elements.TintableSvg");
         var RoomPreviewBar = sdk.getComponent("rooms.RoomPreviewBar");
+        var Loader = sdk.getComponent("elements.Spinner");
 
         if (!this._timelineWindow) {
             if (this.props.roomId) {
-                if (!this.state.timelineLoaded) {
-                    var Loader = sdk.getComponent("elements.Spinner");
+                if (this.state.timelineLoading) {
                     return (
                         <div className="mx_RoomView">
                             <Loader />
@@ -1562,7 +1579,6 @@ module.exports = React.createClass({
         var myMember = this.state.room.getMember(myUserId);
         if (myMember && myMember.membership == 'invite') {
             if (this.state.joining || this.state.rejecting) {
-                var Loader = sdk.getComponent("elements.Spinner");
                 return (
                     <div className="mx_RoomView">
                         <Loader />
@@ -1701,7 +1717,6 @@ module.exports = React.createClass({
                 aux = <RoomSettings ref="room_settings" onSaveClick={this.onSaveClick} onCancelClick={this.onCancelClick} room={this.state.room} />;
             }
             else if (this.state.uploadingRoomSettings) {
-                var Loader = sdk.getComponent("elements.Spinner");                
                 aux = <Loader/>;
             }
             else if (this.state.searching) {
@@ -1827,7 +1842,25 @@ module.exports = React.createClass({
                 hideMessagePanel = true;
             }
 
-            var messagePanel = (
+            var messagePanel;
+
+            // just show a spinner while the timeline loads.
+            //
+            // put it in a div of the right class so that the order in the
+            // roomview flexbox is correct.
+            //
+            // Note that the click-on-search-result functionality relies on the
+            // fact that the messagePanel is hidden while the timeline reloads,
+            // but that the RoomHeader (complete with search term) continues to
+            // exist.
+            if (this.state.timelineLoading) {
+                messagePanel = (
+                        <div className="mx_RoomView_messagePanel" style={{display: "flex"}}>
+                            <Loader />
+                        </div>
+                );
+            } else {
+                messagePanel = (
                     <ScrollPanel ref="messagePanel" className="mx_RoomView_messagePanel"
                             onScroll={ this.onMessageListScroll } 
                             onFillRequest={ this.onMessageListFillRequest }
@@ -1835,7 +1868,8 @@ module.exports = React.createClass({
                         <li className={scrollheader_classes}></li>
                         {this.getEventTiles()}
                     </ScrollPanel>
-            );
+                );
+            }
 
             return (
                 <div className={ "mx_RoomView" + (inCall ? " mx_RoomView_inCall" : "") } ref="roomView">

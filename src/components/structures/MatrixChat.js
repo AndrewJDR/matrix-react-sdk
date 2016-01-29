@@ -861,10 +861,10 @@ module.exports = React.createClass({
                         <RoomView
                             ref="roomView"
                             roomId={this.state.currentRoom}
-                            initialEventId={this.state.initialEventId}
-                            initialEventPixelOffset={this.state.initialEventPixelOffset}
+                            eventId={this.state.initialEventId}
+                            eventPixelOffset={this.state.initialEventPixelOffset}
                             autoPeek={this.state.autoPeek}
-                            key={this.state.currentRoom+"+"+this.state.initialEventId}
+                            key={this.state.currentRoom}
                             ConferenceHandler={this.props.ConferenceHandler} />
                     );
                     right_panel = <RightPanel roomId={this.state.currentRoom} collapsed={this.state.collapse_rhs} />
