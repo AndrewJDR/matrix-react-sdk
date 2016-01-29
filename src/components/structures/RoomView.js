@@ -1272,8 +1272,21 @@ module.exports = React.createClass({
 
     sendReadReceipt: function() {
         if (!this.state.room) return;
+        if (!this.refs.messagePanel) return;
+
         var currentReadUpToEventId = this.state.room.getEventReadUpTo(MatrixClientPeg.get().credentials.userId);
         var currentReadUpToEventIndex = this._indexForEventId(currentReadUpToEventId);
+
+        // We want to avoid sending out read receipts when we are looking at
+        // events in the past.
+        //
+        // For now, let's apply a heuristic: if (a) the server has a
+        // readUpToEvent for us, (b) we can't find it, and (c) we could
+        // forward-paginate the event timeline, then suppress read receipts.
+        if (currentReadUpToEventId && currentReadUpToEventIndex === null &&
+                this._timelineWindow.canPaginate(EventTimeline.FORWARDS)) {
+            return;
+        }
 
         var lastReadEventIndex = this._getLastDisplayedEventIndexIgnoringOwn();
         if (lastReadEventIndex === null) return;
@@ -1297,7 +1310,7 @@ module.exports = React.createClass({
             //
             // we do this here as well as in onRoomReceipt to cater for guest users
             // (which do not send out read receipts).
-            if (this.refs.messagePanel && this.refs.messagePanel.isAtBottom()) {
+            if (this.refs.messagePanel.isAtBottom()) {
                 this.refs.messagePanel.scrollToToken(lastReadEvent.getId());
             }
         }
