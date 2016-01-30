@@ -63,6 +63,7 @@ module.exports = React.createClass({
         roomId: React.PropTypes.string.isRequired,
         eventId: React.PropTypes.string,
         eventPixelOffset: React.PropTypes.number,
+        highlightedEventId: React.PropTypes.string, // id of event to be highlighted
         autoPeek: React.PropTypes.bool, // should we try to peek the room on mount, or has whoever invoked us already initiated a peek?
     },
 
@@ -985,9 +986,11 @@ module.exports = React.createClass({
             }
 
             var eventId = mxEv.getId();
+            var highlight = (eventId == this.props.highlightedEventId);
             ret.push(
                 <li key={eventId} ref={this._collectEventNode.bind(this, eventId)} data-scroll-token={eventId}>
-                    <EventTile mxEvent={mxEv} continuation={continuation} last={last}/>
+                    <EventTile mxEvent={mxEv} continuation={continuation}
+                        last={last} selectedEvent={highlight}/>
                 </li>
             );
 

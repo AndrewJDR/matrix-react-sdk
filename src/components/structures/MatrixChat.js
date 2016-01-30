@@ -444,6 +444,7 @@ module.exports = React.createClass({
         var newState = {
             currentRoom: roomId,
             initialEventId: eventId,
+            highlightedEventId: eventId,
             initialEventPixelOffset: undefined,
             page_type: this.PageTypes.RoomView,
         };
@@ -862,6 +863,7 @@ module.exports = React.createClass({
                             ref="roomView"
                             roomId={this.state.currentRoom}
                             eventId={this.state.initialEventId}
+                            highlightedEventId={this.state.highlightedEventId}
                             eventPixelOffset={this.state.initialEventPixelOffset}
                             autoPeek={this.state.autoPeek}
                             key={this.state.currentRoom}
