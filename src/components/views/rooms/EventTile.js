@@ -222,6 +222,7 @@ module.exports = React.createClass({
                 left -= 15;
             }
         }
+        var permalinkButton;
         var editButton;
         if (!this.state.allReadAvatars) {
             var remainder = receipts.length - MAX_READ_AVATARS;
@@ -241,7 +242,16 @@ module.exports = React.createClass({
             );
         }
 
+		left -= 15;
+		var eventId = this.props.mxEvent.getId();
+		var roomId = this.props.mxEvent.getRoomId();
+		var roomUrl = "#/room/" + roomId + "/" + eventId;
+		permalinkButton = (
+			<a style={{ left: left }} className="mx_EventTile_permalinkButton" alt="Permalink" title="Permalink" href={roomUrl}><img border="0" width="14" height="14" src="img/file.png" /></a>
+		);
+
         return <span className="mx_EventTile_readAvatars" ref={this.collectReadAvatarNode}>
+            { permalinkButton }
             { editButton }
             { remText }
             <Velociraptor transition={ reorderTransitionOpts }>
